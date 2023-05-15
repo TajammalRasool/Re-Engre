@@ -1,0 +1,126 @@
+class AdminController extends Controller
+{
+    public function adminDashboard()
+    {
+        return view('admin.index');
+    }
+
+    public function adminLogin()
+    {
+        return view('admin.admin_login');
+    }
+
+    public function adminProfile()
+    {
+        $admindata = Auth::user();
+        return view('admin.admin_profile', compact('admindata'));
+    }
+
+    public function adminProfileUpdate(Request $request)
+    {
+        $id = Auth::id();
+        $data = User::find($id);
+        $data->fill($request->all());
+
+        if ($request->hasFile('photo')) {
+            $file = $request->file('photo');
+            $filename = date('YmdHi') . $file->getClientOriginalName();
+            $file->move(public_path('upload/admin_images'), $filename);
+            $data->photo = $filename;
+        }
+
+        $data->save();
+        $notification = [
+            'message' => 'Admin profile updated successfully',
+            'alert-type' => 'success'
+        ];
+
+        return redirect()->back()->with($notification);
+    }
+
+    public function adminChangePassword()
+    {
+        return view('admin.admin_changepass');
+    }
+
+    public function adminUpdatePassword(Request $request)
+    {
+        $request->validate([
+            'old_password' => 'required',
+            'new_password' => 'required|confirmed'
+        ]);
+
+        if (!Hash::check($request->old_password, Auth::user()->password)) {
+            return back()->with('error', 'Old password not match');
+        }
+
+        Auth::user()->update([
+            'password' => Hash::make($request->new_password)
+        ]);
+
+        return back()->with("status", "Password changed successfully");
+    }
+
+    public function adminDistroy()
+    {
+        Auth::logout();
+
+        session()->invalidate();
+
+        session()->regenerateToken();
+
+        return redirect('/admin/login');
+    }
+
+    //Brand Work
+    public function allBrand()
+    {
+        $brands = Brand::latest()->get();
+        return view('backend.brand.all_brands', compact('brands'));
+    }
+
+    public function addBrand()
+    {
+        return view('backend.brand.add_brand');
+    }
+
+    public function storeBrand(Request $request)
+    {
+        $request->validate([
+            'brand_name' => 'required',
+            'brand_img' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048'
+        ]);
+
+        $image = $request->file('brand_img');
+        $name_gen = hexdec(uniqid()) . '.' . $image->getClientOriginalExtension();
+        Image::make($image)->resize(300, 300)->save('upload/brand/' . $name_gen);
+        $save_url = 'upload/brand/' . $name_gen;
+
+        Brand::create([
+            'brand_name' => $request->brand_name,
+            'brand_slug' => Str::slug($request->brand_name),
+            'brand_img' => $save_url
+        ]);
+
+        $notification = [
+            'message' => 'Brand inserted successfully',
+            'alert-type' => 'success'
+        ];
+
+        return redirect()->route('all.brand')->with($notification);
+    }
+
+    public function editBrand($id)
+    {
+        $brand = Brand::findOrFail($id);
+        return view('backend.brand.edit_brand', compact('brand'));
+    }
+
+    public function updateBrand(Request $request)
+    {
+        $request->validate([
+            'brand_name' => 'required',
+            'brand_img' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
+        ]);
+
+        $brand =
