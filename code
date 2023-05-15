@@ -1,0 +1,1222 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Brand;
+use App\Models\Category;
+use App\Models\Coupon;
+use App\Models\Orders;
+use App\Models\ShipDistricts;
+use App\Models\ShipDivision;
+use App\Models\ShipState;
+use App\Models\Slider;
+use App\Models\Banner;
+use App\Models\Multiimage;
+use App\Models\Product;
+use App\Models\SubCategory;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Image;
+use Carbon\Carbon;
+
+class AdminController extends Controller
+{
+    public function AdminDashboard()
+    {
+        return view('Admin.index');
+    }
+
+    //End Method
+
+    public function Adminlogin()
+    {
+        return view('Admin.admin_login');
+    }//End Method
+
+
+    public function AdminProfile()
+    {
+        $admindata = Auth::user();
+        return view('Admin.admin_profile', compact('admindata'));
+
+    } //End Method
+
+    public function AdminProfileupdate(Request $request)
+    {
+        $id = Auth::user()->id;
+        $data = User::find($id);
+        $data->name = $request->name;
+        $data->email = $request->email;
+        $data->phone = $request->phone;
+        $data->address = $request->address;
+
+        if ($request->file('photo')) {
+            $file = $request->file('photo');
+            @unlink(public_path('upload/admin_images/' . $data->photo));
+            $filename = date('YmdHi') . $file->getClientOriginalName();
+            $file->move(public_path('upload/admin_images'), $filename);
+            $data['photo'] = $filename;
+        }
+
+        $data->save();
+        $notification = array(
+            'message' => 'Admin Profile Updated Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    } //End Method
+
+    public function AdminChangePassword()
+    {
+        return view('Admin.admin_changepass');
+    } //End Method
+
+    public function AdminupdatePassword(Request $request)
+    {
+        $request->validate([
+            'old_password' => 'required',
+            'new_password' => 'required|confirmed'
+        ]);
+        //If Password Do not Match
+        if (!Hash::check($request->old_password, auth::user()->password)) {
+            return back()->with('error', 'Old Password Not match');
+        }
+        //If Password Match
+        User::whereId(auth()->user()->id)->update([
+            'password' => Hash::make($request->new_password)
+        ]);
+
+        return back()->with("status", " Password Changed Successfully");
+    }//End Method
+
+
+    public function AdminDistroy(Request $request)
+    {
+        Auth::guard('web')->logout();
+
+        $request->session()->invalidate();
+
+        $request->session()->regenerateToken();
+
+        return redirect('/admin/login');
+    }//End Method
+
+//-----------------------------------------------------------------------------------------------
+
+    //Brand Work
+    public function AllBrand()
+    {
+        $brands = Brand::latest()->get();
+        return view('Backend.Brand.all_brands', compact('brands'));
+    }//End Method
+
+    public function AddBrand()
+    {
+        return view('Backend.Brand.add_brand');
+    }//End Method
+
+    public function StoreBrand(Request $request)
+    {
+
+        $image = $request->file('brand_img');
+        $name_gen = hexdec(uniqid()) . '.' . $image->getClientOriginalExtension();
+        Image::make($image)->resize(300, 300)->save('upload/brand/' . $name_gen);
+        $save_url = 'upload/brand/' . $name_gen;
+
+        Brand::insert([
+            'brand_name' => $request->brand_name,
+            'brand_slug' => strtolower(str_replace(' ', '-', $request->brand_name)),
+            'brand_img' => $save_url,
+        ]);
+
+        $notification = array(
+            'message' => 'Brand Inserted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.brand')->with($notification);
+
+    }// End Method
+
+    public function EditBrand($id)
+    {
+        $brand = Brand::findOrFail($id);
+        return view('Backend.Brand.edit_brand', compact('brand'));
+
+    }//End Method
+
+    public function UpdateBrand(Request $request)
+    {
+
+        $brand_id = $request->id;
+        $old_img = $request->old_image;
+
+        if ($request->file('brand_img')) {
+
+            $image = $request->file('brand_img');
+            $name_gen = hexdec(uniqid()) . '.' . $image->getClientOriginalExtension();
+            Image::make($image)->resize(160, 90)->save('upload/brand/' . $name_gen);
+            $save_url = 'upload/brand/' . $name_gen;
+
+            if (file_exists($old_img)) {
+                unlink($old_img);
+            }
+
+            Brand::findOrFail($brand_id)->update([
+                'brand_name' => $request->brand_name,
+                'brand_slug' => strtolower(str_replace(' ', '-', $request->brand_name)),
+                'brand_img' => $save_url,
+            ]);
+
+            $notification = array(
+                'message' => 'Brand Updated with image Successfully',
+                'alert-type' => 'success'
+            );
+
+            return redirect()->route('all.brand')->with($notification);
+
+        } else {
+
+            Brand::findOrFail($brand_id)->update([
+                'brand_name' => $request->brand_name,
+                'brand_slug' => strtolower(str_replace(' ', '-', $request->brand_name)),
+            ]);
+
+            $notification = array(
+                'message' => 'Brand Updated without image Successfully',
+                'alert-type' => 'success'
+            );
+
+            return redirect()->route('all.brand')->with($notification);
+
+        } // end else
+
+    }// End Method
+
+    public function DeleteBrand($id)
+    {
+
+        $brand = Brand::findOrFail($id);
+        $img = $brand->brand_img;
+        unlink($img);
+
+        Brand::findOrFail($id)->delete();
+
+        $notification = array(
+            'message' => 'Brand Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    }// End Method
+
+
+    //-----------------------------------------------------------------------------------------------
+
+    //Categorie Work
+    public function AllCategorie()
+    {
+        $categorie = Category::latest()->get();
+        return view('Backend.Categorie.all_categorie', compact('categorie'));
+    }//End Method
+
+    public function AddCategorie()
+    {
+        return view('Backend.Categorie.add_categorie');
+    }//End Method
+
+    public function StoreCategorie(Request $request)
+    {
+
+        $image = $request->file('categorie_img');
+        $name_gen = hexdec(uniqid()) . '.' . $image->getClientOriginalExtension();
+        Image::make($image)->resize(300, 300)->save('upload/categorie/' . $name_gen);
+        $save_url = 'upload/categorie/' . $name_gen;
+
+        Category::insert([
+            'categorie_name' => $request->categorie_name,
+            'categorie_slug' => strtolower(str_replace(' ', '-', $request->categorie_name)),
+            'categorie_img' => $save_url,
+        ]);
+
+        $notification = array(
+            'message' => 'Categorie Inserted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.categorie')->with($notification);
+
+    }// End Method
+
+    public function EditCategorie($id)
+    {
+        $categorie = Category::findOrFail($id);
+        return view('Backend.Categorie.edit_categorie', compact('categorie'));
+
+    }//End Method
+
+    public function UpdateCategorie(Request $request)
+    {
+
+        $categorie_id = $request->id;
+        $old_img = $request->old_image;
+
+        if ($request->file('categorie_img')) {
+
+            $image = $request->file('categorie_img');
+            $name_gen = hexdec(uniqid()) . '.' . $image->getClientOriginalExtension();
+            Image::make($image)->resize(300, 300)->save('upload/categorie/' . $name_gen);
+            $save_url = 'upload/categorie/' . $name_gen;
+
+            if (file_exists($old_img)) {
+                unlink($old_img);
+            }
+
+            Category::findOrFail($categorie_id)->update([
+                'categorie_name' => $request->categorie_name,
+                'categorie_slug' => strtolower(str_replace(' ', '-', $request->categorie_name)),
+                'categorie_img' => $save_url,
+            ]);
+
+            $notification = array(
+                'message' => 'Categorie Updated with image Successfully',
+                'alert-type' => 'success'
+            );
+
+            return redirect()->route('all.categorie')->with($notification);
+
+        } else {
+
+            Category::findOrFail($categorie_id)->update([
+                'categorie_name' => $request->categorie_name,
+                'categorie_slug' => strtolower(str_replace(' ', '-', $request->categorie_name)),
+            ]);
+
+            $notification = array(
+                'message' => 'Categorie Updated without image Successfully',
+                'alert-type' => 'success'
+            );
+
+            return redirect()->route('all.categorie')->with($notification);
+
+        } // end else
+
+    }// End Method
+
+    public function DeleteCategorie($id)
+    {
+
+        $categorie = Category::findOrFail($id);
+        $img = $categorie->categorie_img;
+        unlink($img);
+
+        Category::findOrFail($id)->delete();
+
+        $notification = array(
+            'message' => 'Categorie Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    }// End Method
+
+//-----------------------------------------------------------------------------------------------
+//Categorie Work
+    public function AllSubCategorie()
+    {
+        $subcategorie = SubCategory::latest()->get();
+        return view('Backend.SubCategorie.all_subcategorie', compact('subcategorie'));
+    }//End Method
+
+    public function AddSubCategorie()
+    {
+        $categorie = Category::orderBy('categorie_name', 'ASC')->get();
+        return view('Backend.SubCategorie.add_subcategorie', compact('categorie'));
+    }//End Method
+
+    public function StoreSubCategorie(Request $request)
+    {
+
+        SubCategory::insert([
+            'categorie_id' => $request->categorie_id,
+            'subcategorie_name' => $request->subcategorie_name,
+            'subcategorie_slug' => strtolower(str_replace(' ', '-', $request->subcategorie_name)),
+        ]);
+
+        $notification = array(
+            'message' => 'SubCategorie Inserted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.subcategorie')->with($notification);
+
+    }// End Method
+
+    public function EditSubCategorie($id)
+    {
+        $categorie = Category::orderBy('categorie_name', 'ASC')->get();
+        $subcategorie = SubCategory::findOrFail($id);
+        return view('Backend.SubCategorie.edit_subcategorie', compact('categorie', 'subcategorie'));
+    }//End Method
+
+    public function UpdateSubCategorie(Request $request)
+    {
+        $subcat_id = $request->id;
+
+        SubCategory::findOrFail($subcat_id)->update([
+            'categorie_id' => $request->categorie_id,
+            'subcategorie_name' => $request->subcategorie_name,
+            'subcategorie_slug' => strtolower(str_replace(' ', '-', $request->subcategorie_name)),
+        ]);
+
+        $notification = array(
+            'message' => 'SubCategory Updated Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.subcategorie')->with($notification);
+    }//End Method
+
+    public function DeleteSubCategorie($id)
+    {
+
+        SubCategory::findOrFail($id)->delete();
+
+        $notification = array(
+            'message' => 'SubCategory Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+    }//End Method
+
+    public function GetSubCategory($category_id){
+        $subcat = SubCategory::where('categorie_id',$category_id)->orderBy('subcategorie_name','ASC')->get();
+        return json_encode($subcat);
+
+    }// End Method
+//-----------------------------------------------------------------------------------------------
+//Vendor Work
+
+    public function InactiveVendor(){
+        $inActiveVendor = User::where('status','inactive')->where('role','vendor')->latest()->get();
+        return view('backend.vendor.inactive_vendor',compact('inActiveVendor'));
+    }
+    public function ActiveVendor(){
+        $ActiveVendor = User::where('status','active')->where('role','vendor')->latest()->get();
+        return view('backend.vendor.active_vendor',compact('ActiveVendor'));
+    }//End Method
+
+    public function InactiveVendorDetails($id){
+
+        $inactiveVendorDetails = User::findOrFail($id);
+        return view('backend.vendor.inactive_vendor_details',compact('inactiveVendorDetails'));
+
+    }// End Mehtod
+
+    public function ActiveVendorApprove(Request $request){
+
+        $verdor_id = $request->id;
+        $user = User::findOrFail($verdor_id)->update([
+            'status' => 'active',
+        ]);
+
+        $notification = array(
+            'message' => 'Vendor Active Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('active.vendor')->with($notification);
+
+    }// End Mehtod
+
+    public function ActiveVendorDetails($id){
+
+        $activeVendorDetails = User::findOrFail($id);
+        return view('backend.vendor.active_vendor_details',compact('activeVendorDetails'));
+
+    }// End Mehtod
+
+    public function InActiveVendorApprove(Request $request){
+
+        $verdor_id = $request->id;
+        $user = User::findOrFail($verdor_id)->update([
+            'status' => 'inactive',
+        ]);
+
+        $notification = array(
+            'message' => 'Vendor InActive Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('inactive.vendor')->with($notification);
+
+    }// End Mehtod
+
+    //-----------------------------------------------------------------------------------------------
+// Order Management Work
+    public function PendingOrder(){
+        $orders = Orders::where('status','pending')->orderBy('id','DESC')->get();
+        return view('Backend.Orders.pending_orders',compact('orders'));
+    } // End Method
+
+
+//-----------------------------------------------------------------------------------------------
+//Product Work
+    public function AllProducts()
+    {
+        $products = Product::latest()->get();
+        return view('Backend.Product.all_products', compact('products'));
+    }//End Method
+
+    public function AddProducts()
+    {
+        $activeVendor = User::where('status','active')->where('role','vendor')->latest()->get();
+        $brands = Brand::latest()->get();
+        $categories = Category::latest()->get();
+        return view('Backend.Product.add_products',compact('brands','categories','activeVendor'));
+    }//End Method
+
+    public function StoreProducts(Request $request){
+
+
+        $image = $request->file('product_thambnail');
+        $name_gen = hexdec(uniqid()).'.'.$image->getClientOriginalExtension();
+        Image::make($image)->resize(800,800)->save('upload/products/thambnail/'.$name_gen);
+        $save_url = 'upload/products/thambnail/'.$name_gen;
+
+        $product_id = Product::insertGetId([
+
+            'brand_id' => $request->brand_id,
+            'category_id' => $request->category_id,
+            'subcategory_id' => $request->subcategory_id,
+            'product_name' => $request->product_name,
+            'product_slug' => strtolower(str_replace(' ','-',$request->product_name)),
+
+            'product_code' => $request->product_code,
+            'product_qty' => $request->product_qty,
+            'product_tags' => $request->product_tags,
+            'product_size' => $request->product_size,
+            'product_color' => $request->product_color,
+
+            'selling_price' => $request->selling_price,
+            'discount_price' => $request->discount_price,
+            'short_descp' => $request->short_descp,
+            'long_descp' => $request->long_descp,
+
+            'hot_deals' => $request->hot_deals,
+            'featured' => $request->featured,
+            'special_offer' => $request->special_offer,
+            'special_deals' => $request->special_deals,
+
+            'product_thambnail' => $save_url,
+            'vendor_id' => $request->vendor_id,
+            'status' => 1,
+            'created_at' => Carbon::now(),
+
+        ]);
+
+        /// Multiple Image Upload From her //////
+        $images = $request->file('multi_img');
+        foreach($images as $img){
+            $make_name = hexdec(uniqid()).'.'.$img->getClientOriginalExtension();
+            Image::make($img)->resize(800,800)->save('upload/products/multi-image/'.$make_name);
+            $uploadPath = 'upload/products/multi-image/'.$make_name;
+
+
+
+            Multiimage::insert([
+
+                'product_id' => $product_id,
+                'photo_name' => $uploadPath,
+                'created_at' => Carbon::now(),
+
+            ]);
+        } // end foreach
+
+        /// End Multiple Image Upload From her //////
+
+        $notification = array(
+            'message' => 'Product Inserted Successfully',
+            'alert-type' => 'success'
+        );
+        return redirect()->route('all.products')->with($notification);
+
+    } // End Method
+
+    public function EditProducts($id)
+    {
+        $multiImgs = Multiimage::where('product_id',$id)->get();
+        $activeVendor = User::where('status','active')->where('role','vendor')->latest()->get();
+        $brands = Brand::latest()->get();
+        $categories = Category::latest()->get();
+        $subcategory=SubCategory::latest()->get();
+        $products=Product::findOrFail($id);
+        return view('Backend.Product.edit_product',compact('brands','categories','activeVendor','subcategory','products','multiImgs'));
+    }//End Method
+
+    public function ViewProduct($id)
+    {
+        $multiImgs = Multiimage::where('product_id',$id)->get();
+        $activeVendor = User::where('status','active')->where('role','vendor')->latest()->get();
+        $brands = Brand::latest()->get();
+        $categories = Category::latest()->get();
+        $subcategory=SubCategory::latest()->get();
+        $products=Product::findOrFail($id);
+        return view('Backend.Product.view_product',compact('brands','categories','activeVendor','subcategory','products','multiImgs'));
+    }//End Method
+
+    public function UpdateProduct(Request $request){
+
+        $product_id = $request->id;
+
+        Product::findOrFail($product_id)->update([
+
+            'brand_id' => $request->brand_id,
+            'category_id' => $request->category_id,
+            'subcategory_id' => $request->subcategory_id,
+            'product_name' => $request->product_name,
+            'product_slug' => strtolower(str_replace(' ','-',$request->product_name)),
+
+            'product_code' => $request->product_code,
+            'product_qty' => $request->product_qty,
+            'product_tags' => $request->product_tags,
+            'product_size' => $request->product_size,
+            'product_color' => $request->product_color,
+
+            'selling_price' => $request->selling_price,
+            'discount_price' => $request->discount_price,
+            'short_descp' => $request->short_descp,
+            'long_descp' => $request->long_descp,
+
+            'hot_deals' => $request->hot_deals,
+            'featured' => $request->featured,
+            'special_offer' => $request->special_offer,
+            'special_deals' => $request->special_deals,
+
+
+            'vendor_id' => $request->vendor_id,
+            'status' => 1,
+            'created_at' => Carbon::now(),
+
+        ]);
+
+
+        $notification = array(
+            'message' => 'Product Updated Without Image Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.products')->with($notification);
+
+    }// End Method
+
+    public function UpdateProductThambnail(Request $request){
+
+        $pro_id = $request->id;
+        $oldImage = $request->old_img;
+
+        $image = $request->file('product_thambnail');
+        $name_gen = hexdec(uniqid()).'.'.$image->getClientOriginalExtension();
+        Image::make($image)->resize(800,800)->save('upload/products/thambnail/'.$name_gen);
+        $save_url = 'upload/products/thambnail/'.$name_gen;
+
+        if (file_exists($oldImage)) {
+            unlink($oldImage);
+        }
+
+        Product::findOrFail($pro_id)->update([
+
+            'product_thambnail' => $save_url,
+            'updated_at' => Carbon::now(),
+        ]);
+
+        $notification = array(
+            'message' => 'Product Image Thambnail Updated Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+
+    }// End Method
+
+    public function UpdateProductMultiimage(Request $request){
+
+        $imgs = $request->multi_img;
+
+        foreach($imgs as $id => $img ){
+            $imgDel = Multiimage::findOrFail($id);
+            unlink($imgDel->photo_name);
+
+            $make_name = hexdec(uniqid()).'.'.$img->getClientOriginalExtension();
+            Image::make($img)->resize(800,800)->save('upload/products/multi-image/'.$make_name);
+            $uploadPath = 'upload/products/multi-image/'.$make_name;
+
+            Multiimage::where('id',$id)->update([
+                'photo_name' => $uploadPath,
+                'updated_at' => Carbon::now(),
+
+            ]);
+        } // end foreach
+
+        $notification = array(
+            'message' => 'Product Multi Image Updated Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    }// End Method
+
+    public function MulitImageDelete($id){
+        $oldImg = Multiimage::findOrFail($id);
+        unlink($oldImg->photo_name);
+
+        Multiimage::findOrFail($id)->delete();
+
+        $notification = array(
+            'message' => 'Product Multi Image Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    }// End Method
+
+
+    public function ProductInActive($id){
+
+        Product::findOrFail($id)->update(['status' => 0]);
+        $notification = array(
+            'message' => 'Product Inactive',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    }// End Method
+
+
+    public function ProductActive($id){
+
+        Product::findOrFail($id)->update(['status' => 1]);
+        $notification = array(
+            'message' => 'Product Active',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    }// End Method
+
+
+    public function DeleteProduct($id){
+
+        $product = Product::findOrFail($id);
+        unlink($product->product_thambnail);
+        Product::findOrFail($id)->delete();
+
+        $imges = Multiimage::where('product_id',$id)->get();
+        foreach($imges as $img){
+            unlink($img->photo_name);
+            Multiimage::where('product_id',$id)->delete();
+        }
+
+        $notification = array(
+            'message' => 'Product Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    }// End Method
+
+//    ----------------------------------------------------------------------------------------------
+
+    //Slider Working Start
+
+    public function AllSlider(){
+        $sliders = Slider::latest()->get();
+        return view('Backend.Slider.all_slider',compact('sliders'));
+    } // End Method
+
+    public function AddSlider(){
+        return view('Backend.Slider.add_slider');
+    }// End Method
+
+    public function StoreSlider(Request $request){
+
+        $image = $request->file('slider_image');
+        $name_gen = hexdec(uniqid()).'.'.$image->getClientOriginalExtension();
+        Image::make($image)->resize(500,600)->save('upload/slider/'.$name_gen);
+        $save_url = 'upload/slider/'.$name_gen;
+
+        $image1 = $request->file('slider_background');
+        $name_gen1 = hexdec(uniqid()).'.'.$image1->getClientOriginalExtension();
+        Image::make($image1)->resize(1903,520)->save('upload/sliderbackground/'.$name_gen1);
+        $save_url1 = 'upload/sliderbackground/'.$name_gen1;
+
+        Slider::insert([
+            'slider_title' => $request->slider_title,
+            'short_title' => $request->short_title,
+            'slider_image' => $save_url,
+            'slider_background' => $save_url1,
+        ]);
+
+        $notification = array(
+            'message' => 'Slider Inserted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.slider')->with($notification);
+
+    }// End Method
+
+    public function EditSlider($id){
+        $sliders = Slider::findOrFail($id);
+        return view('Backend.Slider.edit_slider',compact('sliders'));
+    }// End Method
+
+
+    public function UpdateSlider(Request $request){
+
+        $slider_id = $request->id;
+        $old_img = $request->old_image;
+
+        if ($request->file('slider_image')) {
+
+            $image = $request->file('slider_image');
+            $name_gen = hexdec(uniqid()).'.'.$image->getClientOriginalExtension();
+            Image::make($image)->resize(480,600)->save('upload/slider/'.$name_gen);
+            $save_url = 'upload/slider/'.$name_gen;
+
+            if (file_exists($old_img)) {
+                unlink($old_img);
+            }
+
+            Slider::findOrFail($slider_id)->update([
+                'slider_title' => $request->slider_title,
+                'short_title' => $request->short_title,
+                'slider_image' => $save_url,
+            ]);
+
+            $notification = array(
+                'message' => 'Slider Updated with image Successfully',
+                'alert-type' => 'success'
+            );
+
+            return redirect()->route('all.slider')->with($notification);
+
+        } else {
+
+            Slider::findOrFail($slider_id)->update([
+                'slider_title' => $request->slider_title,
+                'short_title' => $request->short_title,
+            ]);
+
+            $notification = array(
+                'message' => 'Slider Updated without image Successfully',
+                'alert-type' => 'success'
+            );
+
+            return redirect()->route('all.slider')->with($notification);
+
+        } // end else
+
+    }// End Method
+
+    public function UpdateSliderBack(Request $request){
+
+        $slider_id = $request->id;
+        $old_img = $request->old_image;
+
+        $image = $request->file('slider_background');
+        $name_gen = hexdec(uniqid()).'.'.$image->getClientOriginalExtension();
+        Image::make($image)->resize(1903,520)->save('upload/sliderbackground/'.$name_gen);
+        $save_url = 'upload/sliderbackground/'.$name_gen;
+
+        if (file_exists($old_img)) {
+            unlink($old_img);
+        }
+
+        Slider::findOrFail($slider_id)->update([
+
+            'slider_background' => $save_url,
+            'updated_at' => Carbon::now(),
+        ]);
+
+        $notification = array(
+            'message' => 'Slider Background Image Updated Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+
+    }// End Method
+
+
+
+    public function DeleteSlider($id){
+
+        $slider = Slider::findOrFail($id);
+        $img = $slider->slider_image;
+        unlink($img );
+
+        Slider::findOrFail($id)->delete();
+
+        $notification = array(
+            'message' => 'Slider Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    }// End Method
+
+
+    //Slider Working Ended
+//    ----------------------------------------------------------------------------------------------
+
+
+    //Banner Working Start
+
+    public function AllBanner(){
+        $banner = Banner::latest()->get();
+        return view('Backend.Banner.all_banner',compact('banner'));
+    } // End Method
+
+    public function AddBanner(){
+        return view('Backend.Banner.add_banner');
+    }// End Method
+
+    public function StoreBanner(Request $request){
+
+        $image = $request->file('banner_image');
+        $name_gen = hexdec(uniqid()).'.'.$image->getClientOriginalExtension();
+        Image::make($image)->resize(768,450)->save('upload/banner/'.$name_gen);
+        $save_url = 'upload/banner/'.$name_gen;
+
+        Banner::insert([
+            'banner_title' => $request->banner_title,
+            'banner_url' => $request->banner_url,
+            'banner_image' => $save_url,
+        ]);
+
+        $notification = array(
+            'message' => 'Banner Inserted Successfully',
+            'alert-type' => 'info'
+        );
+
+        return redirect()->route('all.banner')->with($notification);
+
+    }// End Method
+
+    public function EditBanner($id){
+        $banner = Banner::findOrFail($id);
+        return view('Backend.Banner.edit_banner',compact('banner'));
+    }// End Method
+
+
+    public function UpdateBanner(Request $request){
+
+        $banner_id = $request->id;
+        $old_img = $request->old_image;
+
+        if ($request->file('banner_image')) {
+
+            $image = $request->file('banner_image');
+            $name_gen = hexdec(uniqid()).'.'.$image->getClientOriginalExtension();
+            Image::make($image)->resize(768,450)->save('upload/banner/'.$name_gen);
+            $save_url = 'upload/banner/'.$name_gen;
+
+            if (file_exists($old_img)) {
+                unlink($old_img);
+            }
+
+            Banner::findOrFail($banner_id)->update([
+                'banner_title' => $request->banner_title,
+                'banner_url' => $request->banner_url,
+                'banner_image' => $save_url,
+            ]);
+
+            $notification = array(
+                'message' => 'Banner Updated with image Successfully',
+                'alert-type' => 'success'
+            );
+
+            return redirect()->route('all.banner')->with($notification);
+
+        } else {
+
+            Banner::findOrFail($banner_id)->update([
+                'banner_title' => $request->banner_title,
+                'banner_url' => $request->banner_url,
+            ]);
+
+            $notification = array(
+                'message' => 'Banner Updated without image Successfully',
+                'alert-type' => 'success'
+            );
+
+            return redirect()->route('all.banner')->with($notification);
+
+        } // end else
+
+    }// End Method
+
+
+
+
+    public function DeleteBanner($id){
+
+        $banner = Banner::findOrFail($id);
+        $img = $banner->banner_image;
+        unlink($img );
+
+        Banner::findOrFail($id)->delete();
+
+        $notification = array(
+            'message' => 'Banner Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+    }// End Method
+
+
+  
+    //----------------------------------------------------------------------
+    //Shipping Area
+
+    public function AllDivision(){
+        $division = ShipDivision::latest()->get();
+        return view('Backend.Shipping Area.all_division',compact('division'));
+    } // End Method
+
+    public function AddDivision(){
+        return view('Backend.Shipping Area.add_division');
+    }// End Method
+
+
+    public function StoreDivision(Request $request){
+
+        ShipDivision::insert([
+            'division_name' => $request->division_name,
+        ]);
+
+        $notification = array(
+            'message' => 'ShipDivision Inserted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.division')->with($notification);
+
+    }// End Method
+
+    public function EditDivision($id){
+
+        $division= ShipDivision::findOrFail($id);
+        return view('Backend.Shipping Area.edit_division',compact('division'));
+
+    }// End Method
+
+
+    public function UpdateDivision(Request $request){
+
+        $division_id = $request->id;
+
+        ShipDivision::findOrFail($division_id)->update([
+            'division_name' => $request->division_name,
+        ]);
+
+        $notification = array(
+            'message' => 'ShipDivision Updated Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.division')->with($notification);
+
+
+    }// End Method
+
+
+    public function DeleteDivision($id){
+
+        ShipDivision::findOrFail($id)->delete();
+
+        $notification = array(
+            'message' => 'Division Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+
+    }// End Method
+
+    /////////////// District CRUD ///////////////
+
+
+    public function AllDistrict(){
+        $district = ShipDistricts::latest()->get();
+        return view('Backend.Shipping Area.all_district',compact('district'));
+    } // End Method
+
+    public function AddDistrict(){
+        $division = ShipDivision::orderBy('division_name','ASC')->get();
+        return view('Backend.Shipping Area.add_district',compact('division'));
+    }// End Method
+
+
+    public function StoreDistrict(Request $request){
+
+        ShipDistricts::insert([
+            'division_id' => $request->division_id,
+            'district_name' => $request->district_name,
+        ]);
+
+        $notification = array(
+            'message' => 'ShipDistricts Inserted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.district')->with($notification);
+
+    }// End Method
+
+    public function EditDistrict($id){
+        $division = ShipDivision::orderBy('division_name','ASC')->get();
+        $district = ShipDistricts::findOrFail($id);
+        return view('Backend.Shipping Area.edit_district',compact('district','division'));
+
+    }// End Method
+
+
+    public function UpdateDistrict(Request $request){
+
+        $district_id = $request->id;
+
+        ShipDistricts::findOrFail($district_id)->update([
+            'division_id' => $request->division_id,
+            'district_name' => $request->district_name,
+        ]);
+
+        $notification = array(
+            'message' => 'ShipDistricts Updated Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.district')->with($notification);
+
+
+    }// End Method
+
+
+    public function DeleteDistrict($id){
+
+        ShipDistricts::findOrFail($id)->delete();
+
+        $notification = array(
+            'message' => 'ShipDistricts Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+
+    }// End Method
+
+
+    /////////////// State CRUD ///////////////
+
+
+    public function AllState(){
+        $state = ShipState::latest()->get();
+        return view('Backend.Shipping Area.all_state',compact('state'));
+    } // End Method
+
+
+    public function AddState(){
+        $division = ShipDivision::orderBy('division_name','ASC')->get();
+        $district = ShipDistricts::orderBy('district_name','ASC')->get();
+        return view('Backend.Shipping Area.add_state',compact('division','district'));
+    }// End Method
+
+
+    public function GetDistrict($division_id){
+        $dist = ShipDistricts::where('division_id',$division_id)->orderBy('district_name','ASC')->get();
+        return json_encode($dist);
+
+    }// End Method
+
+    public function StoreState(Request $request){
+
+        ShipState::insert([
+            'division_id' => $request->division_id,
+            'district_id' => $request->district_id,
+            'state_name' => $request->state_name,
+        ]);
+
+        $notification = array(
+            'message' => 'ShipState Inserted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.state')->with($notification);
+
+    }// End Method
+
+    public function EditState($id){
+        $division = ShipDivision::orderBy('division_name','ASC')->get();
+        $district = ShipDistricts::orderBy('district_name','ASC')->get();
+        $state = ShipState::findOrFail($id);
+        return view('Backend.Shipping Area.edit_state',compact('division','district','state'));
+    }// End Method
+
+
+    public function UpdateState(Request $request){
+
+        $state_id = $request->id;
+
+        ShipState::findOrFail($state_id)->update([
+            'division_id' => $request->division_id,
+            'district_id' => $request->district_id,
+            'state_name' => $request->state_name,
+        ]);
+
+        $notification = array(
+            'message' => 'ShipState Updated Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->route('all.state')->with($notification);
+
+
+    }// End Method
+
+    public function DeleteState($id){
+
+        ShipState::findOrFail($id)->delete();
+
+        $notification = array(
+            'message' => 'ShipState Deleted Successfully',
+            'alert-type' => 'success'
+        );
+
+        return redirect()->back()->with($notification);
+
+
+    }// End Method
+
+
+
+}
